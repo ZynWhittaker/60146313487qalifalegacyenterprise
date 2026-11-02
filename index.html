@@ -181,6 +181,9 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible{
   background-color:var(--surface);
 }
 
+
+/* Profil pelanggan */
+.profile-card{padding:24px;text-align:center}.profile-avatar{width:82px;height:82px;border-radius:50%;object-fit:cover;background:#244333;margin:8px auto 14px;display:block}.profile-email{overflow-wrap:anywhere;color:var(--muted)}.profile-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:20px}
 </style>
 </head>
 <body>
@@ -298,6 +301,19 @@ button:focus-visible,a:focus-visible,[role="button"]:focus-visible{
   </div>
 </div>
 
+
+<div class="overlay" id="profileOverlay" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
+ <div class="drawer">
+  <div class="drawer-head"><h2 id="profileTitle">Profil pelanggan</h2><button class="close-btn" data-close="profileOverlay" aria-label="Tutup">×</button></div>
+  <div class="profile-card">
+   <img class="profile-avatar" id="profileAvatar" alt="Gambar profil" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='50' fill='%23244333'/%3E%3Ccircle cx='50' cy='36' r='18' fill='%23d8c59a'/%3E%3Cpath d='M15 96c2-24 16-36 35-36s33 12 35 36' fill='%23d8c59a'/%3E%3C/svg%3E">
+   <h3 id="profileName">Belum log masuk</h3><p class="profile-email" id="profileEmail">Log masuk menggunakan akaun Google untuk melihat profil.</p>
+   <div class="profile-actions"><button class="btn btn-primary" id="googleLoginBtn">Teruskan dengan Google</button><button class="btn btn-outline" id="googleLogoutBtn" hidden>Log keluar</button></div>
+   <p id="profileStatus" class="profile-email" role="status" style="margin-top:14px"></p>
+  </div>
+ </div>
+</div>
+
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 const foods = [
@@ -371,12 +387,44 @@ document.getElementById("themeToggle").addEventListener("click",()=>{
  document.querySelector('meta[name="theme-color"]').content=light?"#f5f2e8":"#071a12";
 });
 document.getElementById("navOrders").addEventListener("click",()=>toast("Sejarah pesanan akan disambungkan dalam versi backend."));
-document.getElementById("navProfile").addEventListener("click",()=>toast("Profil pelanggan belum disambungkan."));
+// Profil dikendalikan oleh Firebase module di bawah.
 document.querySelectorAll(".overlay").forEach(o=>o.addEventListener("click",e=>{if(e.target===o)closeOverlay(o.id)}));
 document.addEventListener("keydown",e=>{if(e.key==="Escape")document.querySelectorAll(".overlay.open").forEach(o=>closeOverlay(o.id))});
 document.getElementById("year").textContent=new Date().getFullYear();
 renderMenu();updateCart();
 setTimeout(()=>document.getElementById("splash").classList.add("hide"),1900);
+</script>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+const firebaseConfig = {
+ apiKey: "AIzaSyBvgj6VtemGwEnXJuf4D1mQR7A6-f7LThQ",
+ authDomain: "nr-qalifa-food.firebaseapp.com",
+ projectId: "nr-qalifa-food",
+ storageBucket: "nr-qalifa-food.firebasestorage.app",
+ messagingSenderId: "420769454050",
+ appId: "1:420769454050:web:ccb329ea0f525f10a90bbb",
+ measurementId: "G-DS4RCDGY2S"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const provider = new GoogleAuthProvider();
+const statusEl = document.getElementById('profileStatus');
+function showProfile(user){
+ const loggedIn = !!user;
+ document.getElementById('profileName').textContent = loggedIn ? (user.displayName || 'Pelanggan') : 'Belum log masuk';
+ document.getElementById('profileEmail').textContent = loggedIn ? (user.email || '') : 'Log masuk menggunakan akaun Google untuk melihat profil.';
+ document.getElementById('profileAvatar').src = (loggedIn && user.photoURL) ? user.photoURL : document.getElementById('profileAvatar').src;
+ document.getElementById('googleLoginBtn').hidden = loggedIn;
+ document.getElementById('googleLogoutBtn').hidden = !loggedIn;
+ if(loggedIn) statusEl.textContent = 'Anda sudah log masuk.';
+}
+onAuthStateChanged(auth, user => showProfile(user));
+getRedirectResult(auth).catch(err => { statusEl.textContent = 'Log masuk gagal: ' + (err.code || err.message); });
+document.getElementById('navProfile').addEventListener('click', () => { document.getElementById('profileOverlay').classList.add('open'); document.body.style.overflow='hidden'; });
+document.getElementById('googleLoginBtn').addEventListener('click', async () => { statusEl.textContent='Membuka log masuk Google…'; try { await signInWithRedirect(auth, provider); } catch(err) { statusEl.textContent='Log masuk gagal: '+(err.code || err.message); } });
+document.getElementById('googleLogoutBtn').addEventListener('click', async () => { try { await signOut(auth); statusEl.textContent='Anda telah log keluar.'; } catch(err) { statusEl.textContent='Log keluar gagal: '+(err.code || err.message); } });
 </script>
 </body>
 </html>
