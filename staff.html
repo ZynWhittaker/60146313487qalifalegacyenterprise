@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#071a12"><title>Nr Qalifa Food — Staff</title>
+<style>
+:root{color-scheme:dark;--bg:#07150f;--panel:#10251a;--line:#345340;--text:#f5f4ec;--muted:#b9c7bd;--gold:#d8bd75;--green:#2b8156}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#07150f,#10291c);color:var(--text);font:15px system-ui,sans-serif;min-height:100vh}
+header{padding:22px max(18px,calc((100% - 1000px)/2));border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font:700 24px Georgia,serif;margin:0}small,.muted{color:var(--muted)}main{max-width:1000px;margin:28px auto;padding:0 16px}
+.panel,.order{background:#10251a;border:1px solid var(--line);border-radius:18px;padding:18px;margin-bottom:14px}
+button,select{font:inherit;border-radius:11px;padding:10px 14px;border:1px solid var(--line);background:#193b29;color:white}
+button{cursor:pointer;background:var(--green);border-color:#4a9b6c;font-weight:700}button.secondary{background:transparent}
+.hidden{display:none!important}.order-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}.order h3{margin:0 0 6px}.items{padding-left:20px;line-height:1.7}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:14px 0;color:var(--muted)}
+.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.status{color:var(--gold);font-weight:800}
+#orders{margin-top:18px}.empty{text-align:center;padding:35px;color:var(--muted)}
+</style></head>
+<body>
+<header><div><h1>Nr Qalifa Food</h1><small>Panel pengurusan pesanan staff · Klang, Selangor</small></div><div class="controls"><span id="staffIdentity" class="muted"></span><button id="loginBtn">Log masuk Google</button><button id="logoutBtn" class="secondary hidden">Log keluar</button></div></header>
+<main>
+<section class="panel"><h2>Pesanan pelanggan</h2><p id="message" class="muted">Log masuk menggunakan akaun Google staff yang dibenarkan.</p><div id="stats" class="muted"></div></section>
+<section id="orders"><div class="empty">Belum memuatkan pesanan.</div></section>
+</main>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, query, orderBy, onSnapshot, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+const firebaseConfig = {
+ apiKey: "AIzaSyBvgj6VtemGwEnXJuf4D1mQR7A6-f7LThQ",
+ authDomain: "nr-qalifa-food.firebaseapp.com",
+ projectId: "nr-qalifa-food",
+ storageBucket: "nr-qalifa-food.firebasestorage.app",
+ messagingSenderId: "420769454050",
+ appId: "1:420769454050:web:ccb329ea0f525f10a90bbb",
+ measurementId: "G-DS4RCDGY2S"
+};
+const app=initializeApp(firebaseConfig), auth=getAuth(app), db=getFirestore(app), provider=new GoogleAuthProvider();
+const $=id=>document.getElementById(id);
+let stopOrders=null;
+const allowedStaffEmails = [
+  "balfarex@gmail.com"
+];
+function safe(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+$("loginBtn").onclick=()=>signInWithRedirect(auth,provider).catch(e=>$("message").textContent="Ralat log masuk: "+e.message);
+$("logoutBtn").onclick=()=>signOut(auth);
+getRedirectResult(auth).catch(e=>$("message").textContent="Ralat Google: "+e.message);
+onAuthStateChanged(auth,user=>{
+ if(stopOrders){stopOrders();stopOrders=null;}
+ const permitted=!!user && allowedStaffEmails.includes((user.email||"").toLowerCase());
+ $("loginBtn").classList.toggle("hidden",!!user);
+ $("logoutBtn").classList.toggle("hidden",!user);
+ $("staffIdentity").textContent=user?(user.email||""):"";
+ if(!user){$("message").textContent="Sila log masuk menggunakan akaun Google staff."; $("orders").innerHTML='<div class="empty">Log masuk diperlukan.</div>';return;}
+ if(!permitted){$("message").textContent="Akaun ini belum didaftarkan sebagai staff. Hubungi pemilik Nr Qalifa Food."; $("orders").innerHTML='<div class="empty">Akses staff tidak dibenarkan.</div>';return;}
+ $("message").textContent="Berjaya log masuk. Pesanan dikemas kini secara langsung.";
+ const q=query(collection(db,"orders"),orderBy("createdAt","desc"));
+ stopOrders=onSnapshot(q,snap=>{
+  $("stats").textContent=`Jumlah pesanan: ${snap.size}`;
+  if(snap.empty){$("orders").innerHTML='<div class="empty">Belum ada pesanan masuk.</div>';return;}
+  $("orders").innerHTML=snap.docs.map(d=>{
+   const o=d.data(), items=Array.isArray(o.items)?o.items:[];
+   const date=o.createdAt?.toDate?o.createdAt.toDate().toLocaleString("ms-MY"):"Baru diterima";
+   const itemHtml=items.map(i=>`<li>${safe(i.name)} × ${Number(i.quantity)||0} — RM ${(Number(i.unitPrice)||0).toFixed(2)}</li>`).join("");
+   return `<article class="order"><div class="order-head"><div><h3>Pesanan #${safe(d.id.slice(-7).toUpperCase())}</h3><small>${safe(date)}</small></div><span class="status">${safe(o.status||"Menunggu")}</span></div>
+   <div class="meta"><span><b>Pelanggan:</b> ${safe(o.customerName)}</span><span><b>Telefon:</b> ${safe(o.customerPhone)}</span><span><b>E-mel:</b> ${safe(o.customerEmail)}</span><span><b>Jenis:</b> ${safe(o.orderType)}</span><span><b>Bayaran:</b> ${safe(o.paymentType)}</span><span><b>Alamat/nota:</b> ${safe(o.addressNote||"-")}</span></div>
+   <b>Item dipesan</b><ul class="items">${itemHtml}</ul><div class="order-head"><strong>Jumlah: RM ${(Number(o.total)||0).toFixed(2)}</strong>
+   <div class="controls"><select data-status="${safe(d.id)}"><option ${o.status==="Menunggu"?"selected":""}>Menunggu</option><option ${o.status==="Diterima"?"selected":""}>Diterima</option><option ${o.status==="Sedang disediakan"?"selected":""}>Sedang disediakan</option><option ${o.status==="Siap"?"selected":""}>Siap</option><option ${o.status==="Dibatalkan"?"selected":""}>Dibatalkan</option></select><button data-save="${safe(d.id)}">Simpan status</button></div></div></article>`;
+  }).join("");
+ },err=>{$("message").textContent="Tidak dapat membaca pesanan: "+err.message;});
+});
+$("orders").addEventListener("click",async e=>{
+ const b=e.target.closest("[data-save]");if(!b)return;
+ const id=b.dataset.save, sel=$("orders").querySelector(`[data-status="${CSS.escape(id)}"]`);
+ if(!sel)return;b.disabled=true;
+ try{await updateDoc(doc(db,"orders",id),{status:sel.value});$("message").textContent="Status pesanan berjaya dikemas kini.";}
+ catch(err){$("message").textContent="Gagal kemas kini: "+err.message;}
+ finally{b.disabled=false;}
+});
+</script></body></html>
