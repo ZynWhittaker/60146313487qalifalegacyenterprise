@@ -374,13 +374,7 @@ document.getElementById("showAll").addEventListener("click",()=>{activeCategory=
 ["openCart","openCartTop","heroCart","navCart"].forEach(id=>document.getElementById(id).addEventListener("click",()=>{updateCart();openOverlay("cartOverlay")}));
 ["heroOrder","promoOrder"].forEach(id=>document.getElementById(id).addEventListener("click",()=>document.getElementById("menu").scrollIntoView({behavior:"smooth"})));
 document.getElementById("checkoutBtn").addEventListener("click",()=>{if(!cartCount())return;closeOverlay("cartOverlay");openOverlay("checkoutOverlay")});
-document.getElementById("checkoutForm").addEventListener("submit",e=>{
- e.preventDefault();if(!cartCount()){closeOverlay("checkoutOverlay");toast("Troli masih kosong");return}
- const name=document.getElementById("customerName").value.trim();
- const orderId="RB"+Math.floor(10000+Math.random()*90000);
- document.getElementById("orderMessage").textContent=`Terima kasih, ${name}. Nombor rujukan demo anda ${orderId}. Jumlah ${rm(cartTotal())}. Ini hanya simulasi — restoran belum menerima pesanan ini.`;
- cart={};updateCart();e.target.reset();closeOverlay("checkoutOverlay");openOverlay("messageOverlay");
-});
+// Borang checkout disambungkan ke Firebase Firestore dalam modul di bawah.
 document.getElementById("themeToggle").addEventListener("click",()=>{
  document.body.classList.toggle("light");const light=document.body.classList.contains("light");
  document.getElementById("themeToggle").textContent=light?"☀":"☾";
@@ -398,6 +392,7 @@ setTimeout(()=>document.getElementById("splash").classList.add("hide"),1900);
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 const firebaseConfig = {
  apiKey: "AIzaSyBvgj6VtemGwEnXJuf4D1mQR7A6-f7LThQ",
  authDomain: "nr-qalifa-food.firebaseapp.com",
@@ -409,6 +404,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 const statusEl = document.getElementById('profileStatus');
 function showProfile(user){
@@ -425,6 +421,54 @@ getRedirectResult(auth).catch(err => { statusEl.textContent = 'Log masuk gagal: 
 document.getElementById('navProfile').addEventListener('click', () => { document.getElementById('profileOverlay').classList.add('open'); document.body.style.overflow='hidden'; });
 document.getElementById('googleLoginBtn').addEventListener('click', async () => { statusEl.textContent='Membuka log masuk Google…'; try { await signInWithRedirect(auth, provider); } catch(err) { statusEl.textContent='Log masuk gagal: '+(err.code || err.message); } });
 document.getElementById('googleLogoutBtn').addEventListener('click', async () => { try { await signOut(auth); statusEl.textContent='Anda telah log keluar.'; } catch(err) { statusEl.textContent='Log keluar gagal: '+(err.code || err.message); } });
+
+// Simpan pesanan sebenar ke Firestore selepas pelanggan log masuk.
+document.getElementById("checkoutForm").addEventListener("submit", async (e) => {
+ e.preventDefault();
+ const user = auth.currentUser;
+ if (!user) {
+   document.getElementById("profileOverlay").classList.add("open");
+   document.body.style.overflow = "hidden";
+   statusEl.textContent = "Sila log masuk Google sebelum membuat pesanan.";
+   return;
+ }
+ if (!cartCount()) { alert("Troli masih kosong."); return; }
+ const submitBtn = e.submitter || e.target.querySelector('button[type="submit"]');
+ const oldLabel = submitBtn.textContent;
+ submitBtn.disabled = true; submitBtn.textContent = "Menghantar pesanan…";
+ const name = document.getElementById("customerName").value.trim();
+ const phone = document.getElementById("customerPhone").value.trim();
+ const type = document.getElementById("orderType").value;
+ const address = document.getElementById("customerAddress").value.trim();
+ const payment = document.getElementById("paymentType").value;
+ const items = foods.filter(f => cart[f.id]).map(f => ({
+   id: f.id, name: f.name, unitPrice: Number(f.price), quantity: Number(cart[f.id])
+ }));
+ const total = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+ try {
+   const ref = await addDoc(collection(db, "orders"), {
+     customerUid: user.uid,
+     customerName: name,
+     customerEmail: user.email || "",
+     customerPhone: phone,
+     orderType: type,
+     addressNote: address,
+     paymentType: payment,
+     items,
+     total,
+     status: "Menunggu",
+     createdAt: serverTimestamp()
+   });
+   document.getElementById("orderMessage").textContent =
+     `Terima kasih, ${name}. Pesanan ${ref.id.slice(-7).toUpperCase()} telah dihantar kepada Nr Qalifa Food. Jumlah ${rm(total)}.`;
+   cart = {}; updateCart(); e.target.reset();
+   closeOverlay("checkoutOverlay"); openOverlay("messageOverlay");
+ } catch (err) {
+   alert("Pesanan gagal dihantar. Sila cuba lagi. (" + (err.code || err.message) + ")");
+ } finally {
+   submitBtn.disabled = false; submitBtn.textContent = oldLabel;
+ }
+});
 </script>
 </body>
 </html>
